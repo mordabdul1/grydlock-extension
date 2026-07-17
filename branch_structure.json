@@ -1,0 +1,24 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "feat/decision-history",
+    "feat/i18n-scaffold",
+    "feat/xbull-interception",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "feat/decision-history": "main",
+    "feat/i18n-scaffold": "main",
+    "feat/xbull-interception": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "feat/decision-history",
+    "feat/i18n-scaffold",
+    "feat/xbull-interception",
+    "origin"
+  ]
+}

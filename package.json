@@ -5,8 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/build-extension.mjs",
+    "dev": "node init && vite",
+    "build": "node init && tsc -b && vite build && node scripts/build-extension.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint .",

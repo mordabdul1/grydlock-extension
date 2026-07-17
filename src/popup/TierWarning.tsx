@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { TierInfo } from '../lib/tiers'
+import { t } from '../i18n'
 
 interface TierWarningProps {
   tier: TierInfo
@@ -25,17 +26,17 @@ export default function TierWarning({
         <span className="tier-icon" aria-hidden="true">
           {tier.icon}
         </span>{' '}
-        {tier.label} risk
+        {t('warning.title', { tier: t(tier.labelKey) })}
       </h1>
       {destination && <p className="destination">{destination}</p>}
-      <p className="score">Score: {score}</p>
-      <p className="message">{tier.message}</p>
+      <p className="score">{t('warning.score', { score })}</p>
+      <p className="message">{t(tier.messageKey)}</p>
       <div className="actions">
         <button className="cancel" onClick={onCancel}>
-          Cancel
+          {t('warning.cancel')}
         </button>
         <button className="proceed" onClick={onProceed}>
-          Proceed
+          {t('warning.proceed')}
         </button>
       </div>
       {devControl}

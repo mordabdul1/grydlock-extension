@@ -1,3 +1,5 @@
+import { t } from '../i18n'
+
 interface DevScoreSliderProps {
   score: number
   onChange: (score: number) => void
@@ -6,7 +8,7 @@ interface DevScoreSliderProps {
 export default function DevScoreSlider({ score, onChange }: DevScoreSliderProps) {
   return (
     <div className="dev-slider">
-      <label htmlFor="dev-score">Dev: override score ({score})</label>
+      <label htmlFor="dev-score">{t('dev.overrideScore', { score })}</label>
       <input
         id="dev-score"
         type="range"

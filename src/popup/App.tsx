@@ -4,6 +4,7 @@ import { tierForScore } from '../lib/tiers'
 import DevScoreSlider from './DevScoreSlider'
 import TierWarning from './TierWarning'
 import type { RuntimeDecisionMadeMessage } from '../intercept/protocol'
+import { t } from '../i18n'
 import './App.css'
 
 const PLACEHOLDER_DESTINATION = 'GABCDEXAMPLE0000000000000000000000000000000000000000000'
@@ -66,15 +67,15 @@ function ScoreView({ onRetry }: { onRetry: () => void }) {
   }, [])
 
   if (state.status === 'loading') {
-    return <div className="popup">Checking destination…</div>
+    return <div className="popup">{t('popup.loading')}</div>
   }
 
   if (state.status === 'error') {
     return (
       <div className="popup">
-        <p className="message">Could not reach the risk oracle.</p>
+        <p className="message">{t('popup.oracleError')}</p>
         <button className="proceed" onClick={onRetry}>
-          Retry
+          {t('popup.retry')}
         </button>
       </div>
     )

@@ -68,11 +68,41 @@ grydlock-extension/
 │   ├── adapter/                # Oracle adapter stub — getScore(destination)
 │   ├── background/             # Service worker: decodes XDR, scores, opens the warning popup
 │   ├── decode/                  # XDR → destination extraction (Stellar SDK)
-│   ├── intercept/                # Freighter signTransaction proxy + message-bridge protocol
-│   ├── lib/                       # Score → tier mapping
-│   └── popup/                      # React warning UI — default (dev) and intercept modes
+│   ├── i18n/                     # Locale resource files (en) + minimal t() key lookup
+│   ├── intercept/                 # Freighter signTransaction proxy + message-bridge protocol
+│   ├── lib/                        # Score → tier mapping
+│   └── popup/                       # React warning UI — default (dev) and intercept modes
 └── README.md
 ```
+
+## Localisation (i18n)
+
+Security warnings are exactly the content where comprehension matters most, so no user-facing
+string is hardcoded in component or logic files. Everything routes through `src/i18n/`:
+
+- `src/i18n/en.ts` — the reference locale: a flat `key → string` map holding every user-facing
+  string (tier labels/messages, warning copy, button text, status copy).
+- `src/i18n/index.ts` — a minimal lookup layer: `t(key, params?)` resolves the key in the active
+  locale with `{param}` interpolation, `registerLocale(name, messages)` adds a locale, and
+  `setLocale(name)` switches. Unknown keys render as the key itself so a missed extraction is
+  visible instead of crashing. No i18n library dependency — the scaffold keeps the same shape
+  (keys + interpolation + locale registry), so adopting one later is mechanical if ever needed.
+- `src/lib/tiers.ts` carries `labelKey` / `messageKey` (not strings); components resolve them with
+  `t()` at render time.
+
+### Adding a new locale
+
+1. Create `src/i18n/<locale>.ts` exporting a map of the keys you're translating — copy `en.ts` as
+   the template. Partial maps are fine: any missing key falls back to English.
+2. Register and activate it where the app boots (or behind a settings control):
+   ```ts
+   import { registerLocale, setLocale } from './i18n'
+   import { es } from './i18n/es'
+
+   registerLocale('es', es)
+   setLocale('es')
+   ```
+3. Add a test asserting your locale's keys are a subset of `en`'s (see `src/i18n/i18n.test.ts`).
 
 ## How the Pieces Connect
 

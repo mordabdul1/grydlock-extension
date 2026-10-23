@@ -12,7 +12,7 @@
 
 This is the product. It runs entirely in the user's browser. It hooks the wallet signing flow, decodes the pending transaction, requests a risk score for the destination, and renders a four-tier warning. It never blocks — it warns, and the user decides.
 
-> **Status:** Early build. A Freighter `signTransaction` proxy decodes the destination, routes it through the oracle adapter, and shows the warning before signing. A live oracle connection is **not yet built** — see the roadmap.
+> **Status:** Early build. Freighter and xBull signing requests are intercepted, decoded, routed through the oracle adapter, and warned on before signing. A live oracle connection is **not yet built** — see the roadmap.
 
 ## What it does
 
@@ -20,7 +20,7 @@ This is the product. It runs entirely in the user's browser. It hooks the wallet
 User initiates a transaction in a Stellar wallet
         │
         ▼
-Extension intercepts the unsigned transaction (Freighter signing flow)
+Extension intercepts the unsigned transaction (Freighter or xBull signing flow)
         │
         ▼
 Decode the transaction XDR → extract destination address / asset
@@ -46,7 +46,7 @@ User proceeds or cancels — the extension never blocks
 
 ## Why Freighter First
 
-Stellar has no universal injected wallet provider — each wallet exposes its own signing API, so interception is per-wallet, not global. Gryd Lock targets **Freighter** first (the most widely used browser wallet), proves the interception pattern, then generalises to xBull, Albedo, and Lobstr.
+Stellar has no universal injected wallet provider — each wallet exposes its own signing API, so interception is per-wallet, not global. Gryd Lock targeted **Freighter** first (the most widely used browser wallet) to prove the interception pattern, and now also supports **xBull** through the same `WalletAdapter` shape (`src/intercept/walletAdapter.ts`) — each wallet contributes only its own hook point, while the bridge, background, decoding, scoring, and popup are shared unchanged. Albedo and Lobstr are next.
 
 ## Tech Stack
 
@@ -68,7 +68,7 @@ grydlock-extension/
 │   ├── adapter/                # Oracle adapter stub — getScore(destination)
 │   ├── background/             # Service worker: decodes XDR, scores, opens the warning popup
 │   ├── decode/                  # XDR → destination extraction (Stellar SDK)
-│   ├── intercept/                # Freighter signTransaction proxy + message-bridge protocol
+│   ├── intercept/                # Wallet interception adapters (Freighter, xBull) + message-bridge protocol
 │   ├── lib/                       # Score → tier mapping
 │   └── popup/                      # React warning UI — default (dev) and intercept modes
 └── README.md
@@ -98,8 +98,8 @@ the actual interception point:
 dApp posts { source: FREIGHTER_EXTERNAL_MSG_REQUEST, type: SUBMIT_TRANSACTION, transactionXdr }
         │
         ▼
-src/intercept/mainWorldEntry.ts   (MAIN world; grabs the request via stopImmediatePropagation()
-        │                          before Freighter's own listener sees it)
+src/intercept/wallets/freighter.ts  (MAIN world; grabs the request via stopImmediatePropagation()
+        │                            before Freighter's own listener sees it)
         │  window.postMessage (Gryd Lock's own internal request/response, separate from Freighter's)
         ▼
 src/intercept/bridgeEntry.ts      (isolated world; only place with chrome.* API access)
@@ -127,6 +127,23 @@ src/background/background.ts      (service worker)
                                re-intercepted) for Freighter to handle exactly as it would have
 ```
 
+**Real xBull signing** — xBull ([Creit-Tech/xBull-Wallet](https://github.com/Creit-Tech/xBull-Wallet))
+injects `window.xBullSDK`, but the SDK is a thin postMessage client: `signTransaction` / `signXDR`
+post `{ type: 'XBULL_SIGN_XDR', eventId, detail: { xdr, xdrType, ... } }` to `window`, and xBull's
+content script replies with `{ returnFromCS: true, eventId, detail }`. `src/intercept/wallets/xbull.ts`
+intercepts that request exactly like the Freighter adapter (capture-phase listener +
+`stopImmediatePropagation()`), routes the XDR through the identical bridge → background → popup
+pipeline, and on 'cancel' synthesizes an error response in xBull's own shape
+(`{ error: true, errorMessage, code }`) so the dApp's SDK call rejects as if the wallet had declined.
+Only `xdrType: 'Transaction'` requests are reviewed — `AuthEntry` payloads carry no destination to
+score and pass through untouched.
+
+**The WalletAdapter shape** — `src/intercept/walletAdapter.ts` defines the per-wallet contract:
+an adapter contributes only its wallet-specific hook (`install(requestOutcome)`), while
+`src/intercept/requestOutcome.ts` (the bridge round-trip) and everything behind it are shared.
+`mainWorldEntry.ts` just installs every adapter. Adding a wallet touches nothing outside
+`src/intercept/wallets/`.
+
 - **Registration-order dependent**: this only works if `mainWorldEntry.ts`'s listener registers
   before Freighter's own content script does. Both run at `document_start`, but Chrome does not
   guarantee injection order across different extensions — the same tradeoff every
@@ -144,10 +161,12 @@ src/background/background.ts      (service worker)
   destination-bearing operation, or multiple distinct destinations) resolve to `'allow'` — Gryd Lock
   never blocks what it can't assess.
 - **Tests**: `src/decode/decodeTransaction.test.ts` and `src/intercept/resolveOutcome.test.ts` cover
-  the decode/scoring/decision logic directly; `src/adapter/oracleAdapter.test.ts` and
-  `src/lib/tiers.test.ts` cover the adapter stub and tier mapping; `src/popup/App.test.tsx` covers
-  both the popup's default (loading/error/retry/dev-slider) and intercept-mode rendering, against a
-  mocked adapter and a stubbed `chrome.runtime`.
+  the decode/scoring/decision logic directly; `src/intercept/wallets/freighter.test.ts` and
+  `src/intercept/wallets/xbull.test.ts` cover each adapter's protocol shape (intercept, tagged
+  re-post, synthesized decline, ignore rules) against an injected outcome function;
+  `src/adapter/oracleAdapter.test.ts` and `src/lib/tiers.test.ts` cover the adapter stub and tier
+  mapping; `src/popup/App.test.tsx` covers both the popup's default (loading/error/retry/dev-slider)
+  and intercept-mode rendering, against a mocked adapter and a stubbed `chrome.runtime`.
 
 ## Develop
 
@@ -158,6 +177,20 @@ src/background/background.ts      (service worker)
 4. Open the popup from the toolbar to exercise the dev/testing flow — the score comes from the
    adapter stub, and in dev builds the dev control lets you drag through all four tiers. To exercise
    real interception, visit a page with Freighter installed and call `signTransaction`.
+
+### Manual test — real xBull install
+
+1. Install [xBull Wallet](https://chromewebstore.google.com/detail/xbull-wallet/omajpeaffjgmlpmhbfdjepdejoemifpe) alongside the unpacked Gryd Lock build and set up a wallet.
+2. On any page (e.g. a dApp using xBull, or DevTools on any site where both extensions are loaded), request a signature:
+   ```js
+   await xBullSDK.signTransaction({ xdr: '<unsigned transaction XDR>' })
+   // or the deprecated form: await xBullSDK.signXDR('<xdr>', {})
+   ```
+3. Expected: the Gryd Lock warning popup opens first with the destination's score/tier.
+   **Proceed** → xBull's own signing prompt opens and completes as normal.
+   **Cancel** → the SDK call rejects with `Rejected by Gryd Lock: user cancelled after reviewing the risk warning.` and xBull never sees the request.
+4. `xBullSDK.getPublicKey()`, `getNetwork()`, connect flows, and `AuthEntry` signing must be unaffected (Gryd Lock only reviews `XBULL_SIGN_XDR` requests with `xdrType: 'Transaction'`).
+5. Same caveat as Freighter: interception is registration-order dependent across extensions (both content scripts run at `document_start`).
 
 ## Quality Gates
 
@@ -175,7 +208,8 @@ All four run in CI (`.github/workflows/ci.yml`) on every push to `main` and on e
 - [x] Popup renders one score across the four tiers. _(stub)_
 - [x] Fetch the score through the oracle adapter (stub score) — prove the query path end to end.
 - [x] Freighter interception: proxy `signTransaction`, decode the XDR, extract the destination, route it through the adapter.
+- [x] Generalise interception beyond Freighter: `WalletAdapter` shape + xBull adapter over the same pipeline.
 - [ ] Swap the stub score for a live one from the adapter.
-- [ ] Generalise interception beyond Freighter.
+- [ ] Further wallets: Albedo, Lobstr.
 
 > **Do not build real interception until the adapter returns a real score.** Interception without a working score source is a warning with nothing to warn about.
